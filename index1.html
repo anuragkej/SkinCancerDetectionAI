@@ -1,0 +1,168 @@
+<!-- Demo: https://rganesh22.github.io/htmlmockups/tensorflowjs.html -->
+<!-- HTML allows us to create UI elements we can interact with-->
+
+<head>
+
+    <!-- CSS helps us design the feel and style of the UI. In this example, we're using Google's Material Design-->
+
+    <!-- Import Google Icon Font -->
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    <!-- Import CSS for Materialize -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css">
+
+     <!--Optimize Viewport for Mobile Devices-->
+     <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+
+</head>
+<body>
+
+    <!-- Title Bar -->
+    <nav <div class="deep-purple lighten-3">
+     </div>
+        <div class="nav-wrapper">
+          <a href="#" class="brand-logo">Skin Cancer Diagnosis utilizing AI &ML</a>
+        </div>
+      </nav>
+
+    <!-- Contain for all other HTML Elements -->
+    <div style="padding:10%;">
+
+        <!-- Loading Bar -->
+        <h4 id="loadingmodel">Loading ML Model</h4>
+        <div id="progressbar" class="progress">
+            <div class="indeterminate"></div>
+        </div>
+
+        <!-- Image File Input -->
+        <div class="file-field input-field">
+            <div class="btn">
+              <span>Select Image</span>
+              <input type="file" accept="image/*" onchange="onFileSelected(event)">
+            </div>
+            <div class="file-path-wrapper">
+              <input class="file-path validate" type="text">
+            </div>
+          </div>
+        
+        <!-- Image to be Classified -->
+        <img id="image" width="100" height="75"></img>
+
+        <!-- Add New Lines -->
+
+        <br/>
+        <br/>
+        
+        <!-- Button to Perform Classification -->
+        <a onclick="predict()" class=" {btn-large} waves-effect waves-light btn"><i class="left material-icons">fiber_smart_record
+</i>Classify Image</a>
+        
+        <!-- Text Fields for the Prediction and the Probability -->
+        <h3>Prediction</h3>
+
+        <b><p id="prediction"></p></b>
+        <p id="probability"></p>
+
+    </div>
+        
+    <!-- Import JS Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@2.0.0/dist/tf.min.js"></script>
+    <script src="static/js/skin_cancer_diagnosis_script.js"></script>
+
+    <!-- Javascript allows us to apply logic to our UI elements and programmatically control the website -->
+    <!-- We'll be using Tensorflow JS to perform our model inference -->
+
+
+    <script>
+        var model = null
+
+        var classes = ['Actinic Keratoses', 'Basal Cell Carcinoma', 'Benign Keratoses', 'Dermatofibroma', 'Melanoma', 'Melanocytic Nevus', 'Vascular Lesion']
+        
+        
+        define('servername','localhost'); 
+        define('serveruser','root'); 
+        define('serverpwd',''); 
+        define('dbname','nameofdb'); 
+         
+        $connection = mysqli_connect(servername,serveruser,serverpwd,dbname) 
+        // Function to perform prediction on our Tensorflow JS Model
+        
+        async function predict(){
+        
+            try {
+                if(imgtag.src == ""){
+                    alert("Select an Image to Classify")
+                    return
+                }
+        
+                let tensorImg = tf.browser.fromPixels(imgtag)
+                                .resizeNearestNeighbor([75, 100])
+                                .toFloat().expandDims();
+                
+                model.predict(tensorImg).data().then(
+            function (prediction){
+                let predicted_class = prediction.indexOf(Math.max(...prediction))
+        
+        
+                console.log(classes[predicted_class])
+                console.log(prediction) 
+        
+                prediction_text.innerHTML = classes[predicted_class]
+                probability_text.innerHTML = Math.round(prediction[predicted_class] * 100) + "% Confidence"
+            }
+        )
+                
+            }catch(error){
+                alert("Error Classifying Image")
+            }
+        }
+        
+        // Function to Select our Image and Display it
+        
+        function onFileSelected(event) {
+        
+            try {
+                var selectedFile = event.target.files[0];
+                var reader = new FileReader();
+        
+                imgtag.title = selectedFile.name;
+        
+                reader.onload = function(event) {
+                    imgtag.src = event.target.result;
+                };
+        
+                reader.readAsDataURL(selectedFile);
+            }catch (error){
+                alert("Error Reading Image")
+            }
+            
+        }
+        
+        // Function to Select our Image and Display it
+        
+        async function loadModel(){
+            console.log("Loading Model")
+            model = await tf.loadLayersModel('cnn_model/model.json')
+            console.log("Loaded Model")
+        
+            loadingmodel.innerHTML = "Loaded ML Model"
+            progressbar.style.display = "none"
+        }
+        
+        loadModel()
+    </script>
+
+    <script>
+        
+        // Initialize our HTML elements as JS objects
+
+        var imgtag = document.getElementById("image")
+        var prediction_text = document.getElementById("prediction")
+        var probability_text = document.getElementById("probability")
+
+        var progressbar = document.getElementById("progressbar")
+        var loadingmodel = document.getElementById("loadingmodel")
+
+        
+    </script>
+</body>
