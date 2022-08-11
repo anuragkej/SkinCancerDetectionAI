@@ -74,6 +74,21 @@
 
 
     <script>
+        
+        // Initialize our HTML elements as JS objects
+
+        var imgtag = document.getElementById("image")
+        var prediction_text = document.getElementById("prediction")
+        var probability_text = document.getElementById("probability")
+
+        var progressbar = document.getElementById("progressbar")
+        var loadingmodel = document.getElementById("loadingmodel")
+
+        
+    </script>
+
+
+    <script>
         var model = null
 
         var classes = ['Actinic Keratoses', 'Basal Cell Carcinoma', 'Benign Keratoses', 'Dermatofibroma', 'Melanoma', 'Melanocytic Nevus', 'Vascular Lesion']
@@ -152,17 +167,8 @@
         loadModel()
     </script>
 
-    <script>
-        
-        // Initialize our HTML elements as JS objects
 
-        var imgtag = document.getElementById("image")
-        var prediction_text = document.getElementById("prediction")
-        var probability_text = document.getElementById("probability")
 
-        var progressbar = document.getElementById("progressbar")
-        var loadingmodel = document.getElementById("loadingmodel")
 
-        
-    </script>
+
 </body>
