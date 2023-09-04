@@ -6,4 +6,4 @@
 * URL While being hosted through Google Colab (not actively hosted): https://goz1z0crso-496ff2e9c6d22116-8000-colab.googleusercontent.com/
 
 
-![charlesdeluvio-Mv9hjnEUHR4-unsplash](https://github.com/anuragkej/SkinCancerDetectionAI/assets/106197059/b4ccde87-6666-4168-bafc-726c762632e6)
+![3BAA7631-465A-497A-AC9E-1E42F9DE7270](https://github.com/anuragkej/SkinCancerDetectionAI/assets/106197059/63b55dd4-9c20-45a8-83fa-2a555da7d3d8)
