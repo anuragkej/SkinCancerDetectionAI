@@ -1,0 +1,1392 @@
+{
+  "nbformat": 4,
+  "nbformat_minor": 0,
+  "metadata": {
+    "accelerator": "GPU",
+    "colab": {
+      "provenance": []
+    },
+    "kernelspec": {
+      "display_name": "Python 3",
+      "name": "python3"
+    }
+  },
+  "cells": [
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "TiM6gYg0nhkY"
+      },
+      "source": [
+        "<font color=\"#de3023\"><h1><b>REMINDER MAKE A COPY OF THIS NOTEBOOK, DO NOT EDIT</b></h1></font>"
+      ]
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "8qhF7Oi9c-v6"
+      },
+      "source": [
+        " # Module 2a"
+      ]
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "JouKR3pTBF_L"
+      },
+      "source": [
+        "# *Online Dermatologists:* 📱 🌐 Diagnosing Skin Cancer through a Web Application"
+      ]
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "nPnF7JnsD6II"
+      },
+      "source": [
+        "In this project, we will be be diagnosing skin lesion images for signs of skin cancer. To perform this task, we'll be working with an array of machine learning methods and models.\n",
+        "\n",
+        "We're hoping that our model might be useful to people who don't have easy access to medical professionals. For that, it'll need to be both highly accurate and easily accessible! Yesterday's simple models didn't perform well enough for this job.\n",
+        "\n",
+        "In this notebook we'll be:\n",
+        "*   Developing more complex ML models using Convolutional Neural Networks\n",
+        "*   Setting up our models to be deployed"
+      ]
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "-ObbA3WmI798"
+      },
+      "source": [
+        "# Set up our Environment"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "ih8pc-WDIxbx",
+        "colab": {
+          "base_uri": "https://localhost:8080/"
+        },
+        "outputId": "a3d93843-cbc1-4259-ed55-2d2e57c0169d"
+      },
+      "source": [
+        "#@title Run this to download data and prepare our environment.{ display-mode: \"form\" }\n",
+        "print(\"Installing packages...\")\n",
+        "!pip -q install hypopt tensorflowjs > /dev/null\n",
+        "!pip -q install git+https://github.com/rdk2132/scikeras # workaround for scikeras deprecation\n",
+        "import os\n",
+        "import cv2\n",
+        "import random\n",
+        "import numpy as np\n",
+        "import pandas as pd\n",
+        "import matplotlib\n",
+        "import matplotlib.pyplot as plt\n",
+        "import seaborn as sns\n",
+        "import tensorflow as tf\n",
+        "import keras.api.keras as keras\n",
+        "import scikeras\n",
+        "import tensorflowjs as tfjs\n",
+        "\n",
+        "from tqdm.notebook import tqdm\n",
+        "from keras.layers import * # import all, including Dense, add, Flatten, etc.\n",
+        "from keras.models import Model, Sequential\n",
+        "from scikeras.wrappers import KerasClassifier\n",
+        "from sklearn.model_selection import train_test_split\n",
+        "from sklearn.metrics import confusion_matrix, roc_auc_score, accuracy_score\n",
+        "from keras.applications.mobilenet import MobileNet\n",
+        "from hypopt import GridSearch\n",
+        "\n",
+        "print(\"Downloading files...\")\n",
+        "!wget -q --show-progress 'https://storage.googleapis.com/inspirit-ai-data-bucket-1/Data/AI%20Scholars/Sessions%206%20-%2010%20(Projects)/Project%20-%20(Healthcare%20B)%20Skin%20Cancer%20Diagnosis/X.npy'\n",
+        "!wget -q --show-progress 'https://storage.googleapis.com/inspirit-ai-data-bucket-1/Data/AI%20Scholars/Sessions%206%20-%2010%20(Projects)/Project%20-%20(Healthcare%20B)%20Skin%20Cancer%20Diagnosis/X_g.npy'\n",
+        "!wget -q --show-progress 'https://storage.googleapis.com/inspirit-ai-data-bucket-1/Data/AI%20Scholars/Sessions%206%20-%2010%20(Projects)/Project%20-%20(Healthcare%20B)%20Skin%20Cancer%20Diagnosis/y.npy'\n",
+        "\n",
+        "# Set up Web App\n",
+        "os.makedirs(\"static/js\", exist_ok=True)\n",
+        "!wget -q --show-progress 'https://storage.googleapis.com/inspirit-ai-data-bucket-1/Data/AI%20Scholars/Sessions%206%20-%2010%20(Projects)/Project%20-%20(Healthcare%20B)%20Skin%20Cancer%20Diagnosis/skin_cancer_diagnosis_script.js' &> /dev/null\n",
+        "output = 'static/js/skin_cancer_diagnosis_script.js'\n",
+        "\n",
+        "print(\"Done!\")"
+      ],
+      "execution_count": null,
+      "outputs": [
+        {
+          "output_type": "stream",
+          "name": "stdout",
+          "text": [
+            "Installing packages...\n"
+          ]
+        }
+      ]
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "eMVUe5bs_2uX"
+      },
+      "source": [
+        "Let's load in our data from last time!"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "Kpq4DXFN6cRf"
+      },
+      "source": [
+        "X = np.load(\"X.npy\")\n",
+        "X_g = np.load(\"X_g.npy\")\n",
+        "y = np.load(\"y.npy\")"
+      ],
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "UC4VupwgyqpN"
+      },
+      "source": [
+        "#@title Run this to Perform Data Augmentation { display-mode: \"form\" }\n",
+        "IMG_WIDTH = 100\n",
+        "IMG_HEIGHT = 75\n",
+        "\n",
+        "X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.4, random_state=101)\n",
+        "X_g_train, X_g_test, y_train, y_test = train_test_split(X_g, y, test_size=0.4, random_state=101)\n",
+        "\n",
+        "X_augmented = []\n",
+        "X_g_augmented = []\n",
+        "\n",
+        "y_augmented = []\n",
+        "\n",
+        "for i in tqdm(range(len(X_train))):\n",
+        "  transform = random.randint(0, 1)\n",
+        "  if (transform == 0):\n",
+        "    # Flip the image across the y-axis\n",
+        "    X_augmented.append(cv2.flip(X_train[i], 1))\n",
+        "    X_g_augmented.append(cv2.flip(X_g_train[i], 1))\n",
+        "    y_augmented.append(y_train[i])\n",
+        "  else:\n",
+        "    zoom = 0.33 # Zoom 33% into the image\n",
+        "\n",
+        "    centerX, centerY = int(IMG_HEIGHT/2), int(IMG_WIDTH/2)\n",
+        "    radiusX, radiusY = int((1-zoom)*IMG_HEIGHT*2), int((1-zoom)*IMG_WIDTH*2)\n",
+        "\n",
+        "    minX, maxX = centerX-radiusX, centerX+radiusX\n",
+        "    minY, maxY = centerY-radiusY, centerY+radiusY\n",
+        "\n",
+        "    cropped = (X_train[i])[minX:maxX,  minY:maxY]\n",
+        "    new_img = cv2.resize(cropped, (IMG_WIDTH, IMG_HEIGHT))\n",
+        "    X_augmented.append(new_img)\n",
+        "\n",
+        "    cropped = (X_g_train[i])[minX:maxX, minY:maxY]\n",
+        "    new_img = cv2.resize(cropped, (IMG_WIDTH, IMG_HEIGHT))\n",
+        "    X_g_augmented.append(new_img)\n",
+        "\n",
+        "    y_augmented.append(y_train[i])\n",
+        "\n",
+        "X_augmented = np.array(X_augmented)\n",
+        "X_g_augmented = np.array(X_g_augmented)\n",
+        "\n",
+        "y_augmented = np.array(y_augmented)\n",
+        "\n",
+        "X_train = np.vstack((X_train, X_augmented))\n",
+        "X_g_train = np.vstack((X_g_train, X_g_augmented))\n",
+        "\n",
+        "y_train = np.append(y_train, y_augmented)"
+      ],
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "dwVcrhcDDE7h"
+      },
+      "source": [
+        "Let's view the shape of our training variables after data augmentation:"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "A2yCz4Cqc9U5"
+      },
+      "source": [
+        "#Your Code Here\n",
+        "\n"
+      ],
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "pZThMze80XRW"
+      },
+      "source": [
+        "# Creating Machine Learning Models"
+      ]
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "G8yRJmUHkqWw"
+      },
+      "source": [
+        "**Now**, let's explore some alternative classification options."
+      ]
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "5WAr9_wa1AXX"
+      },
+      "source": [
+        "Let's take a look at Convolutional Neural Networks. These machine learning models are tailor made to work with images through the use of *Convolutional Layers*.\n",
+        "\n",
+        "CNNs contain several kinds of layers; some of the most important are the *Convolutional Layers*, *Pooling Layers*, and *Fully Connected Layers*.\n",
+        "\n",
+        "The Convolutional Layer is used to extract features from the image through the use of a sliding window, known as a kernel.\n"
+      ]
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "iE55_4A6OgiP"
+      },
+      "source": [
+        "![alt text](https://stanford.edu/~shervine/teaching/cs-230/illustrations/convolution-layer-a.png?1c517e00cb8d709baf32fc3d39ebae67)"
+      ]
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "BJJzjq1VOkCe"
+      },
+      "source": [
+        "\n",
+        "The Pooling Layer reduces the dimensions of the image, and extracts the most important features. This layer is very useful in minimizing overfitting, as a lot of the features that are too specific to the training data will be discarded in this step."
+      ]
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "JATieE3K1A6X"
+      },
+      "source": [
+        "![alt text](https://miro.medium.com/max/875/1*KQIEqhxzICU7thjaQBfPBQ.png)"
+      ]
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "EkZ5aeG0OT9O"
+      },
+      "source": [
+        "Finally, after multiple iterations of Convolutional and Pooling Layers, the image is converted to a classification probability in the fully connected layer. The fully connected layer is architecturally similar to a traditional neural network. The input to this component is our flattened image (after all the transformations from the Convolutional and Pooling layers are applied), and the outputs are the predictions."
+      ]
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "U5Mqv1hwOwYu"
+      },
+      "source": [
+        "\n",
+        "![alt text](https://sds-platform-private.s3-us-east-2.amazonaws.com/uploads/74_blog_image_1.png)\n"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "Swoyff2uRp82"
+      },
+      "source": [
+        "# Your Response Here\n",
+        "\n"
+      ],
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "P15J_c6gxnxI"
+      },
+      "source": [
+        "We'll use the the library Keras to create the models for our skin lesion classification. Let's start off by creating our own CNN model (This is the same model we used in the earlier Intro to CNNs notebook). We can work with our color images with the CNNs."
+      ]
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "Ysnigm4YO-Ua"
+      },
+      "source": [
+        "Take a look at the CNN's definition below.\n",
+        "\n",
+        "**Question**: How is the model organized? Could you draw a diagram of its structure?"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "TB0G7k4jO7Tm"
+      },
+      "source": [
+        "# Your Response Here\n",
+        "\n"
+      ],
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "jfVye7oWuNMM"
+      },
+      "source": [
+        "def CNNClassifier(epochs=20, batch_size=10, layers=5, dropout=0.5, activation='relu'):\n",
+        "  def set_params():\n",
+        "    i = 1\n",
+        "  def create_model():\n",
+        "    model = Sequential()\n",
+        "\n",
+        "    for i in range(layers):\n",
+        "      model.add(Conv2D(64, (3, 3), padding='same'))\n",
+        "      model.add(Activation(activation))\n",
+        "\n",
+        "    model.add(Conv2D(64, (3, 3)))\n",
+        "    model.add(Activation(activation))\n",
+        "    model.add(MaxPooling2D(pool_size=(2, 2)))\n",
+        "    model.add(Dropout(dropout / 2.0))\n",
+        "\n",
+        "    model.add(Conv2D(128, (3, 3), padding='same'))\n",
+        "    model.add(Activation(activation))\n",
+        "    model.add(Conv2D(128, (3, 3)))\n",
+        "    model.add(Activation(activation))\n",
+        "    model.add(MaxPooling2D(pool_size=(2, 2)))\n",
+        "    model.add(Dropout(dropout / 2.0))\n",
+        "\n",
+        "    model.add(Flatten())\n",
+        "    model.add(Dense(512))\n",
+        "    model.add(Activation(activation))\n",
+        "    model.add(Dropout(dropout))\n",
+        "    model.add(Dense(7))\n",
+        "    model.add(Activation('softmax'))\n",
+        "\n",
+        "    # initiate RMSprop optimizer\n",
+        "    # Let's train the model using RMSprop\n",
+        "    return model\n",
+        "  opt = keras.optimizers.RMSprop(learning_rate=0.0001, decay=1e-6)\n",
+        "  return KerasClassifier(model=create_model, optimizer=opt, loss='categorical_crossentropy', epochs=epochs, batch_size=batch_size, verbose=1, validation_batch_size=batch_size, validation_split=.4, metrics=['accuracy'])"
+      ],
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "VDsvw0vZPYDm"
+      },
+      "source": [
+        "Some terms you might notice include Epochs, Batch Size, Learning Rate, Dropout, and Activation functions:\n",
+        "\n",
+        "\n",
+        "*   Dropout is a method of preventing overfitting by randomly ignoring certain neurons from the model during training.\n",
+        "*   Activation functions determine how a neuron calculates its output after adding up its weighted inputs.\n",
+        "*   Epochs are just the number of iterations we would like to train our model for.\n",
+        "*   Batch Size is the number of samples we would like to send through the model at a time.\n",
+        "*   The Learning Rate is a hyperparameter that affects how quickly the model changes to adapt to the training data.\n",
+        "\n",
+        "Phew, that was a lot of terms!\n",
+        "\n",
+        "**Question:** With your knowledge so far, what values would you set these parameters to be? What might your model's architecture look like?"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "M33InjU0cybr"
+      },
+      "source": [
+        "# Your Response Here\n",
+        "\n"
+      ],
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "WPCxQjeS1Qjk"
+      },
+      "source": [
+        "#@title Run this to process our X variables and transform our y labels into one hot encoded labels for training.\n",
+        "X_train = X_train.astype(np.float32)\n",
+        "X_test = X_test.astype(np.float32)\n",
+        "\n",
+        "y_train_onehot = np.zeros((y_train.size, y_train.max().astype(int)+1))\n",
+        "y_train_onehot[np.arange(y_train.size), y_train.astype(int)] = 1\n",
+        "y_train_onehot = y_train_onehot.astype(np.float32)\n",
+        "\n",
+        "y_test_onehot = np.zeros((y_test.size, y_test.max().astype(int)+1))\n",
+        "y_test_onehot[np.arange(y_test.size), y_test.astype(int)] = 1\n",
+        "y_test_onehot = y_test_onehot.astype(np.float32)"
+      ],
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "tWHMBqfzkBVM"
+      },
+      "source": [
+        "Let's initialize and train our CNN. Double-click the cell above to see that we have the following variables to use:\n",
+        "* `X_train`\n",
+        "* `y_train_onehot`\n",
+        "* `X_test`\n",
+        "* `y_test_onehot`\n",
+        "\n",
+        "The cell may take a while to execute as well."
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "z_blzuQQyiJv"
+      },
+      "source": [
+        "cnn = CNNClassifier()\n",
+        "\n",
+        "# Fill in the None values below\n",
+        "cnn.fit(None, None,\n",
+        "        validation_data=(None, None))"
+      ],
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "#@title Instructor Solution\n",
+        "cnn = CNNClassifier()\n",
+        "\n",
+        "cnn.fit(X_train, y_train_onehot,\n",
+        "        validation_data=(X_test, y_test_onehot))"
+      ],
+      "metadata": {
+        "id": "81PACx-PayAw"
+      },
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "NniM-5heGlsh"
+      },
+      "source": [
+        "Let's save and download our trained model, so that we can use it in a web app later on."
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "WNiX3iRXTLoz"
+      },
+      "source": [
+        "tfjs.converters.save_keras_model(cnn.model_, 'cnn_model')"
+      ],
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "f6p-1f4H-WyO"
+      },
+      "source": [
+        "**Let's evaluate our model's performance!** Let's start by defining our `model_stats()` and `plot_cm()` functions."
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "tdgFEDo82dYQ"
+      },
+      "source": [
+        "#@title Click here to define `model_stats()`! { display-mode: \"form\" }\n",
+        "def model_stats(name, y_test, y_pred, y_pred_proba):\n",
+        "  y_pred_1d = [0] * len(y_test)\n",
+        "  for i in range(len(y_test)):\n",
+        "    y_pred_1d[i] = np.where(y_pred[i] == 1)[0][0]\n",
+        "\n",
+        "  cm = confusion_matrix(y_test, y_pred_1d)\n",
+        "\n",
+        "  print(name)\n",
+        "\n",
+        "  accuracy = accuracy_score(y_test, y_pred_1d)\n",
+        "  print (\"The accuracy of the model is \" + str(round(accuracy, 5)))\n",
+        "\n",
+        "  y_test_onehot = np.zeros((y_test.size, y_test.max().astype(int)+1))\n",
+        "  y_test_onehot[np.arange(y_test.size), y_test.astype(int)] = 1\n",
+        "\n",
+        "  roc_score = roc_auc_score(y_test_onehot, y_pred_proba)\n",
+        "\n",
+        "  print (\"The ROC AUC Score of the model is \" + str(round(roc_score, 5)))\n",
+        "\n",
+        "  return cm"
+      ],
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "OvsanDVh3tJ_"
+      },
+      "source": [
+        "How can we use this function to evaluate our model? Code your answer below!"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "S1LVV03hvWI9"
+      },
+      "source": [
+        "# Your code here!\n",
+        "\n"
+      ],
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "1NMKhFdFt8QH"
+      },
+      "source": [
+        "#@title Instructor Solution { display-mode: \"form\" }\n",
+        "y_pred = cnn.predict(X_test)\n",
+        "y_pred_proba = cnn.predict_proba(X_test)\n",
+        "\n",
+        "cnn_cm = model_stats(\"CNN\", y_test, y_pred, y_pred_proba)"
+      ],
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "EHweJLDq2hJO"
+      },
+      "source": [
+        "#@title Let's also redefine the `plot_cm()` function from our first notebook. { display-mode: \"form\" }\n",
+        "def plot_cm(name, cm):\n",
+        "  classes = ['akiec', 'bcc', 'bkl', 'df', 'mel', 'nv', 'vasc']\n",
+        "\n",
+        "  df_cm = pd.DataFrame(cm, index = [i for i in classes], columns = [i for i in classes])\n",
+        "  df_cm = df_cm.round(5)\n",
+        "\n",
+        "  plt.figure(figsize = (12, 8))\n",
+        "  sns.heatmap(df_cm,  annot=True, fmt='g')\n",
+        "  plt.title(name + \" Model Confusion Matrix\")\n",
+        "  plt.xlabel(\"Predicted Label\")\n",
+        "  plt.ylabel(\"True Label\")\n",
+        "  plt.show()"
+      ],
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "es3RakSP49Tj"
+      },
+      "source": [
+        "Let's use the function to plot a confusion matrix of our model!"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "vN6xRVnLvY9n"
+      },
+      "source": [
+        "# Your code here!\n",
+        "\n"
+      ],
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "1vCkT0jCvlEV"
+      },
+      "source": [
+        "#@title Instructor Solution { display-mode: \"form\" }\n",
+        "plot_cm(\"CNN\", cnn_cm)"
+      ],
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "2j89i4MY0RSm"
+      },
+      "source": [
+        "It looks like our custom CNN's performance is better than the KNN and Decision Tree models. More training epochs or a bigger dataset would probably help with the performance."
+      ]
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "bPtcDPJjF9KF"
+      },
+      "source": [
+        "Try building your own CNN! Let's see who can get the best performance in your group!"
+      ]
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "CUX0Etpsrnik"
+      },
+      "source": [
+        "### First, define your model here!"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "-eFkna-TGCB0"
+      },
+      "source": [
+        "def CNNClassifier_Modified(epochs=20, batch_size=10, layers=5, dropout=0.5, activation='relu'):\n",
+        "  def set_params():\n",
+        "    i = 1\n",
+        "  def create_model():\n",
+        "    model = Sequential()\n",
+        "\n",
+        "    # Your Code Here\n",
+        "    # To Do: Add more layers!\n",
+        "    model.add(Flatten())\n",
+        "    model.add(Dense(7))\n",
+        "    model.add(Activation('softmax'))\n",
+        "\n",
+        "    return model\n",
+        "  opt = keras.optimizers.RMSprop(learning_rate=0.0001, decay=1e-6)\n",
+        "  return KerasClassifier(model=create_model, optimizer=opt, loss='categorical_crossentropy', epochs=epochs, batch_size=batch_size, validation_batch_size=batch_size, validation_split=.4, metrics=[keras.metrics.AUC()])"
+      ],
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "_PPhn_GNrvgq"
+      },
+      "source": [
+        "### Finish the cell below to train your model."
+      ]
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "cnn = CNNClassifier_Modified()\n",
+        "\n",
+        "# Fill in the None values below\n",
+        "cnn.fit(None, None,\n",
+        "        validation_data=(None, None))"
+      ],
+      "metadata": {
+        "id": "qXiVgr-Ns_W1"
+      },
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "H1tJLItEGR70"
+      },
+      "source": [
+        "#@title Instructor Solution\n",
+        "cnn = CNNClassifier_Modified()\n",
+        "\n",
+        "cnn.fit(X_train, y_train_onehot,\n",
+        "        validation_data=(X_test, y_test_onehot))"
+      ],
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "2easqS-JviIS"
+      },
+      "source": [
+        "### Next, let's evaluate your model's performance!\n",
+        "\n",
+        "Use `cnn_cm` as the variable name for your model's performance."
+      ]
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "# Your Code Here"
+      ],
+      "metadata": {
+        "id": "duMyRN0wtdHr"
+      },
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "6dSZrUKzGUZ7"
+      },
+      "source": [
+        "#@title Instructor Solution\n",
+        "y_pred = cnn.predict(X_test)\n",
+        "y_pred_proba = cnn.predict_proba(X_test)\n",
+        "cnn_cm = model_stats(\"CNN\", y_test, y_pred, y_pred_proba)"
+      ],
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "BVnNteSEvp3x"
+      },
+      "source": [
+        "### Finally, we can plot our confusion matrix below."
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "B6DWNF-AGWQr"
+      },
+      "source": [
+        "plot_cm(\"CNN\", cnn_cm)"
+      ],
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "JK-jmPIbELKO"
+      },
+      "source": [
+        "Let's try using a grid search with our CNN. This section may take a while to execute."
+      ]
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "vSbd6nVW8qnK"
+      },
+      "source": [
+        "In the variable `param_grid` we can specify which parameters in our CNN we want to modify."
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "h9sLO2ozhbEp"
+      },
+      "source": [
+        "param_grid = {\n",
+        "              'epochs' :              [10, 20, 30],\n",
+        "              'batch_size' :          [32, 64, 128],\n",
+        "              'layers' :              [1, 3, 5],\n",
+        "              'dropout' :             [0.2, 0.3, 0.5],\n",
+        "              'activation' :          ['relu', 'elu']\n",
+        "             }"
+      ],
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "gUZ5HOnoFdur"
+      },
+      "source": [
+        "With this parameter grid we would be training 162 different models! This is because the total number of hyperparameter combinations is calculated as `3 * 3 * 3 * 3 * 2`. For testing out our grid search, let's redefine our parameter grid to just have four possible combinations.\n",
+        "\n"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "t3RbPa_cXV90"
+      },
+      "source": [
+        "# Your Code Here\n",
+        "\n",
+        "\n",
+        "\n"
+      ],
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "Xp40dX0GFdRd"
+      },
+      "source": [
+        "#@title Instructor Solution { display-mode: \"form\" }\n",
+        "param_grid = {\n",
+        "              'epochs' :              [10, 20],\n",
+        "              'dropout' :             [0.2, 0.3],\n",
+        "             }"
+      ],
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "L6O6O1kOzw45"
+      },
+      "source": [
+        "Let's create a validation slice in our dataset."
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "Wq58SXMGz21Q"
+      },
+      "source": [
+        "X_test_small, X_val, y_test_small, y_val = train_test_split(X_test, y_test, test_size=0.5, random_state=101)"
+      ],
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "YhvYxtNbFASa"
+      },
+      "source": [
+        "Here we've created a class for our Grid Search Classifier that can be used by the hypopt library for generating various models with different hyperparameters."
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "qzz_Dod38c09"
+      },
+      "source": [
+        "#@title Run this to define our Grid Search CNN Class { display-mode: \"form\" }\n",
+        "class gridSearchCNN():\n",
+        "\n",
+        "    keras_model = None\n",
+        "    model = Sequential()\n",
+        "    epochs=1\n",
+        "    batch_size=10\n",
+        "    layers=5\n",
+        "    dropout=0.5\n",
+        "    activation='relu'\n",
+        "\n",
+        "    def __init__(self, **params):\n",
+        "      pass\n",
+        "\n",
+        "    def fit(self, X, y, sample_weight = None):\n",
+        "        print(\"fitting\")\n",
+        "        self.keras_model.fit(X, y)\n",
+        "        print(\"fitted\")\n",
+        "        return self.keras_model\n",
+        "    def predict(self, X):\n",
+        "        return self.keras_model.predict(X)\n",
+        "    def predict_proba(self, X):\n",
+        "        return self.keras_model.predict_proba(X)\n",
+        "    def score(self, X, y, sample_weight = None):\n",
+        "        print(\"scoring\")\n",
+        "        y_pred_proba = self.keras_model.predict_proba(X)\n",
+        "        roc_auc_score_val = roc_auc_score(y, y_pred_proba)\n",
+        "        print(\"scored\")\n",
+        "        return roc_auc_score_val\n",
+        "\n",
+        "\n",
+        "    def createKerasCNN(self,):\n",
+        "\n",
+        "      def create_model():\n",
+        "        self.model = Sequential()\n",
+        "\n",
+        "        for i in range(self.layers):\n",
+        "          self.model.add(Conv2D(64, (3, 3), padding='same'))\n",
+        "          self.model.add(Activation(self.activation))\n",
+        "\n",
+        "        self.model.add(Conv2D(64, (3, 3)))\n",
+        "        self.model.add(Activation(self.activation))\n",
+        "        self.model.add(MaxPooling2D(pool_size=(2, 2)))\n",
+        "        self.model.add(Dropout(self.dropout / 2.0))\n",
+        "\n",
+        "        self.model.add(Conv2D(128, (3, 3), padding='same'))\n",
+        "        self.model.add(Activation(self.activation))\n",
+        "        self.model.add(Conv2D(128, (3, 3)))\n",
+        "        self.model.add(Activation(self.activation))\n",
+        "        self.model.add(MaxPooling2D(pool_size=(2, 2)))\n",
+        "        self.model.add(Dropout(self.dropout / 2.0))\n",
+        "\n",
+        "        self.model.add(Flatten())\n",
+        "        self.model.add(Dense(512))\n",
+        "        self.model.add(Activation(self.activation))\n",
+        "        self.model.add(Dropout(self.dropout))\n",
+        "        self.model.add(Dense(7))\n",
+        "        self.model.add(Activation('softmax'))\n",
+        "\n",
+        "        return self.model\n",
+        "\n",
+        "      opt = keras.optimizers.RMSprop(learning_rate=0.0001, decay=1e-6)\n",
+        "      return KerasClassifier(model=create_model, optimizer=opt, loss='categorical_crossentropy', epochs=self.epochs, batch_size=self.batch_size, validation_batch_size=self.batch_size, validation_split=.4, metrics=[keras.metrics.AUC()])\n",
+        "\n",
+        "    def get_params(self, deep = True):\n",
+        "        return {\n",
+        "            'epochs': self.epochs,\n",
+        "            'batch_size': self.batch_size,\n",
+        "            'layers': self.layers,\n",
+        "            'dropout': self.dropout,\n",
+        "            'activation': self.activation\n",
+        "            }\n",
+        "\n",
+        "    def set_params(self, **params):\n",
+        "      if 'epochs' in params.keys():\n",
+        "        self.epochs = params['epochs']\n",
+        "      if 'batch_size' in params.keys():\n",
+        "        self.batch_size = params['batch_size']\n",
+        "      if 'layers' in params.keys():\n",
+        "        self.layers = params['layers']\n",
+        "      if 'dropout' in params.keys():\n",
+        "        self.dropout = params['dropout']\n",
+        "      if 'activation' in params.keys():\n",
+        "        self.activation = params['activation']\n",
+        "\n",
+        "      self.keras_model = self.createKerasCNN()\n",
+        "      return self"
+      ],
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "#@title Run this to process our variables and implement One-Hot Encoding on our y values. { display-mode: \"form\" }\n",
+        "# Processing X_train\n",
+        "X_train = X_train.astype(np.float32)\n",
+        "\n",
+        "# Encoding y_train\n",
+        "y_train_onehot = np.zeros((y_train.size, y_train.max().astype(int)+1))\n",
+        "y_train_onehot[np.arange(y_train.size), y_train.astype(int)] = 1\n",
+        "y_train_onehot = y_train_onehot.astype(np.float32)\n",
+        "\n",
+        "# Processing X_val\n",
+        "X_val = X_val.astype(np.float32)\n",
+        "\n",
+        "# Encoding y_val\n",
+        "y_val_onehot = np.zeros((y_val.size, y_val.max().astype(int)+1))\n",
+        "y_val_onehot[np.arange(y_val.size), y_val.astype(int)] = 1\n",
+        "y_val_onehot = y_val_onehot.astype(np.float32)"
+      ],
+      "metadata": {
+        "id": "7Cpk0S8tXmlD"
+      },
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "KMGPIzKqkOQO"
+      },
+      "source": [
+        "Now let's implement our grid search to identify our optimal model parameters. We want to `fit` our grid search model. Notice that we have the following variables to use:\n",
+        "* `X_train`\n",
+        "* `y_train_onehot`\n",
+        "* `X_val`\n",
+        "* `y_val_onehot`\n",
+        "\n",
+        "**Note:** This may take very long to run, so it might be a good idea to come back to this later."
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "kSdY_2_PvwNd"
+      },
+      "source": [
+        "gs = GridSearch(model=gridSearchCNN(), param_grid=param_grid, parallelize=False)\n",
+        "\n",
+        "# Your Code Here\n",
+        "gs.fit(None, None, None, None) # Fill in the None values!\n"
+      ],
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "#@title Instructor Solution\n",
+        "gs = GridSearch(model=gridSearchCNN(), param_grid=param_grid, parallelize=False)\n",
+        "gs.fit(X_train, y_train_onehot, X_val, y_val_onehot, verbose=1)"
+      ],
+      "metadata": {
+        "id": "po1y-smmY1u0"
+      },
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "sov5qvd49gZ1"
+      },
+      "source": [
+        "Let's evaluate our model with our testing dataset. Recall the variables from our dataset's validation slice. We're going to want to also initialize an appropriate `y_pred` variable."
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "qUi61PjX9lS2"
+      },
+      "source": [
+        "# Your Code Here\n",
+        "\n",
+        "\n"
+      ],
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "ithZWR-Zy6rW"
+      },
+      "source": [
+        "#@title Instructor Solution { display-mode: \"form\" }\n",
+        "y_pred = gs.predict(X_test_small)\n",
+        "y_pred_proba = gs.predict_proba(X_test_small)\n",
+        "gs_cm = model_stats(\"Grid Search CNN\", y_test_small, y_pred, y_pred_proba)"
+      ],
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "69xnmWMM-IVp"
+      },
+      "source": [
+        "Let's also plot the confusion matrix."
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "MedHDGHE-OLo"
+      },
+      "source": [
+        "# Your Code Here\n"
+      ],
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "23MWV9m9y9PV"
+      },
+      "source": [
+        "#@title Instructor Solution { display-mode: \"form\" }\n",
+        "plot_cm(\"Grid Search CNN\", gs_cm)"
+      ],
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "VxzSJIvvhC_I"
+      },
+      "source": [
+        "#Transfer Learning\n",
+        "\n",
+        "Now, let's try implementing *transfer learning.* This a form of machine learning where we take an existing pre-trained network and modify the weights for the top level neurons by training on our dataset. Learn more about Transfer Learning [here](https://medium.com/@14prakash/transfer-learning-using-keras-d804b2e04ef8).\n",
+        "\n",
+        "Below, we'll use the MobileNet model as a basis for our model. Check out [this](https://https://medium.com/analytics-vidhya/image-classification-with-mobilenet-cc6fbb2cd470) resource to learn more about MobileNet!"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "m_JkoWrRwJms"
+      },
+      "source": [
+        "def transfer_learning_model():\n",
+        "  mobilenet_model = MobileNet(input_shape=(IMG_HEIGHT, IMG_WIDTH, 3), include_top=False, pooling=\"max\")\n",
+        "\n",
+        "  transfer_model = Sequential()\n",
+        "  transfer_model.add(mobilenet_model)\n",
+        "  transfer_model.add(Dropout(0.1))\n",
+        "  transfer_model.add(BatchNormalization())\n",
+        "  transfer_model.add(Dense(256, activation=\"relu\"))\n",
+        "  transfer_model.add(Dropout(0.1))\n",
+        "  transfer_model.add(BatchNormalization())\n",
+        "  transfer_model.add(Dense(7, activation=\"softmax\"))\n",
+        "\n",
+        "  return transfer_model"
+      ],
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "p31AQxYW_rhq"
+      },
+      "source": [
+        "We no longer need the validation dataset as we aren't tweaking any hyperparameters anymore, so we can use our original, bigger `X_test` dataset that includes the validation data."
+      ]
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "yInf5HpxGlvR"
+      },
+      "source": [
+        "Let's confirm that our training and testing variables are the right shapes. Once again, we'll use the one-hot encoded variables for the output: `y_test_roc` and `y_train_roc`."
+      ]
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "# Your Code Here"
+      ],
+      "metadata": {
+        "id": "QsTF-L71cVTz"
+      },
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "h5GrAcY61QI0"
+      },
+      "source": [
+        "#@title Instructor Solution { display-mode: \"form\" }\n",
+        "print(X_train.shape)\n",
+        "print(y_train_onehot.shape)\n",
+        "\n",
+        "print(X_test.shape)\n",
+        "print(y_test_onehot.shape)"
+      ],
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "y000oRyf-yRy"
+      },
+      "source": [
+        "Let's define our `transfer_model` and train it below!"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "T0NmNz5L_Rku"
+      },
+      "source": [
+        "opt = keras.optimizers.RMSprop(learning_rate=0.0001, decay=1e-6)\n",
+        "transfer_model = KerasClassifier(model=transfer_learning_model, optimizer=opt, loss='categorical_crossentropy', epochs=20, batch_size=10, validation_batch_size=10, validation_split=.2, metrics=[keras.metrics.AUC()])\n",
+        "# Your Code Here"
+      ],
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "YkaqJsAQShcV"
+      },
+      "source": [
+        "#@title Instructor Solution { display-mode: \"form\" }\n",
+        "opt = keras.optimizers.RMSprop(learning_rate=0.0001, decay=1e-6)\n",
+        "transfer_model = KerasClassifier(model=transfer_learning_model, optimizer=opt, loss='categorical_crossentropy', epochs=20, batch_size=10, validation_batch_size=10, validation_split=.2, metrics=[keras.metrics.AUC()])\n",
+        "transfer_model.fit(X_train, y_train_onehot,\n",
+        "        validation_data=(X_test, y_test_onehot))"
+      ],
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "rAQXleqU_DEy"
+      },
+      "source": [
+        "Let's also observe its performance:"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "Qmemnv5RDf4_"
+      },
+      "source": [
+        "# Your Code Here\n",
+        "\n",
+        "\n"
+      ],
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "RZZObgyRykrd"
+      },
+      "source": [
+        "#@title Instructor Solution { display-mode: \"form\" }\n",
+        "y_pred = transfer_model.predict(X_test)\n",
+        "y_pred_proba = transfer_model.predict_proba(X_test)\n",
+        "transfer_cm = model_stats(\"Transfer CNN\", y_test, y_pred, y_pred_proba)"
+      ],
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "fcjLUgpa_E-e"
+      },
+      "source": [
+        "Let's take a look at the confusion matrix."
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "-n_p4h60ADL1"
+      },
+      "source": [
+        "# Your Code Here\n"
+      ],
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "BxWRcrzsykRs"
+      },
+      "source": [
+        "#@title Instructor Solution { display-mode: \"form\" }\n",
+        "plot_cm(\"Transfer Learning CNN\", transfer_cm)"
+      ],
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "l5fUPqfuAhoE"
+      },
+      "source": [
+        "Great, looks like this model performed the best!\n",
+        "**Question:** Why would that be?"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "XjPeKGhNAnj6"
+      },
+      "source": [
+        "# Your Response Here\n",
+        "\n",
+        "\n"
+      ],
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "AYNCn41kApnl"
+      },
+      "source": [
+        "Now that we've created our model, let's save it to a file we can load up later."
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "dtGN1E9tN2A0"
+      },
+      "source": [
+        "tfjs.converters.save_keras_model(transfer_model.model_, 'transfer_model')"
+      ],
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "v6v4v5r8Dw0j"
+      },
+      "source": [
+        " Now, the model should be saved to your computer through your browser. Unfortunately, tensorflowjs doesn't support this version of MobileNet, so we'll have to use our first CNN model for the website deployment."
+      ]
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "IIwaTfNvDXo0"
+      },
+      "source": [
+        "Great work! We've just developed various ML models to perform classification on our skin lesion dataset! Now, our next step is to package this model into a mobile application. Run the code cell below."
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "CX6OKDjzyvVP"
+      },
+      "source": [
+        "!zip -r ./cnn_model.zip ./cnn_model/"
+      ],
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "on_CQSbjPSZJ"
+      },
+      "source": [
+        "After the line of code above finishes executing, click on the folder icon on the left, click the three dots to the left of ```cnn_model.zip```, and download it to your computer. Downloading might take a while! If you choose to deploy your model on the web, you'll be uploading this file to colab notebook 2b so that you can deploy our first CNN model!"
+      ]
+    }
+  ]
+}
